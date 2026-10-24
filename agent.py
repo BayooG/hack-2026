@@ -176,8 +176,9 @@ REQUIRED = {
             },
         )
     ],
-    "instant": [(actions.notify_now, lambda email, r: {"summary": r.summary})],
 }
+# Placeholder until there's a way to alert the user right away: instant blocks time like schedule_time.
+REQUIRED["instant"] = REQUIRED["schedule_time"]
 
 MAX_STEPS = 5
 
