@@ -7,6 +7,7 @@ Usage:
 """
 
 import sys
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Literal
 
@@ -135,6 +136,17 @@ def pick_labels(result) -> list[tuple[str, str | None]]:
     return picked
 
 
+def sender_name(email: Email) -> str:
+    name, address = parseaddr(email.sender)
+    return name or address
+
+
+def block_notes(email: Email, result) -> str:
+    """Description for the calendar block: who, what, how it was labelled."""
+    picked = ", ".join(choice.label for choice in result.labels) or "none"
+    return f"From: {email.sender}\nSubject: {email.subject}\nLabels: {picked}\n\n{result.summary}"
+
+
 # The minimum that always happens, run by code (not Claude): labelling, then the
 # actions for the urgency. Each entry: (action, how to build its arguments from the email and result).
 REQUIRED = {
@@ -144,8 +156,10 @@ REQUIRED = {
         (
             actions.block_time,
             lambda email, r: {
-                "title": f"Respond: {email.subject}",
+                "message_id": email.id,
+                "title": f"Reply to {sender_name(email)}: {email.subject}",
                 "minutes": r.minutes_needed,
+                "notes": block_notes(email, r),
             },
         )
     ],
@@ -243,12 +257,13 @@ def act(email: Email, result, done: list[str]) -> None:
     print("[agent]", "".join(b.text for b in final.content if b.type == "text"))
 
 
-def run(email: Email, label_names: list[str]) -> None:
+def run(email: Email, label_names: list[str]):
     result = classify(email, label_names)
     print(result.model_dump_json(indent=2))
 
     done = run_required(email, result)
     act(email, result, done)
+    return result
 
 
 def main() -> None:

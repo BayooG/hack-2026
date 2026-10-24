@@ -1,0 +1,119 @@
+{% extends "accounts/base.html" %}
+{% block title %}Dashboard · Inbox Agent{% endblock %}
+{% block content %}
+<div class="container page">
+
+  <div class="page-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="muted">{{ user.email }}</p>
+    </div>
+    {% if not connection %}
+      <span class="status status-off"><span class="dot"></span>Not connected</span>
+    {% elif connection.status == "reconnect_needed" %}
+      <span class="status status-warn"><span class="dot"></span>Reconnect needed</span>
+    {% elif user.agent_enabled %}
+      <span class="status status-on"><span class="dot"></span>Agent active</span>
+    {% else %}
+      <span class="status status-off"><span class="dot"></span>Paused</span>
+    {% endif %}
+  </div>
+
+  <div class="layout">
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title">Recent activity</h2>
+        {% if connection %}
+          <form method="post" action="{% url 'run_now' %}">
+            {% csrf_token %}
+            <button class="btn btn-secondary btn-sm" {% if connection.status != "connected" %}disabled{% endif %}>Run now</button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if activity %}
+        <ul class="activity">
+          {% for email in activity %}
+            <li>
+              <div class="subject">{{ email.subject|default:"(no subject)" }}</div>
+              <div class="badges">
+                {% if email.status == "error" %}
+                  <span class="badge badge-error"><span class="dot"></span>Failed</span>
+                {% else %}
+                  {% for label in email.label_list %}<span class="badge">{{ label }}</span>{% endfor %}
+                  <span class="badge badge-{{ email.urgency }}"><span class="dot"></span>{{ email.get_urgency_display }}</span>
+                {% endif %}
+              </div>
+              <div class="meta">
+                {{ email.processed_at|timesince }} ago{% if email.status == "error" %} · {{ email.error|truncatechars:90 }}{% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif connection %}
+        <div class="empty">
+          <span class="empty-icon">{% include "accounts/_icon.html" with name="inbox" %}</span>
+          <h3>Waiting for new email</h3>
+          <p>Emails that arrive from now on will show up here once the agent has handled them.</p>
+        </div>
+      {% else %}
+        <div class="empty">
+          <span class="empty-icon">{% include "accounts/_icon.html" with name="link" %}</span>
+          <h3>Connect Google to get started</h3>
+          <p>Allow access to Gmail and Calendar so the agent can label your email and block time to reply.</p>
+          <a class="btn btn-primary" href="{% url 'google_connect' %}">Connect Google</a>
+        </div>
+      {% endif %}
+    </section>
+
+    <aside class="stack">
+      <section class="card">
+        <div class="card-header"><h2 class="card-title">Google account</h2></div>
+        <div class="card-body">
+          {% if connection %}
+            <dl class="kv">
+              <dt>Connected as</dt>
+              <dd>{{ connection.google_email }}</dd>
+              <dt>Last run</dt>
+              <dd>{% if connection.last_run_at %}{{ connection.last_run_at|timesince }} ago{% else %}Not yet{% endif %}</dd>
+            </dl>
+            {% if connection.last_error %}<p class="error-text">{{ connection.last_error }}</p>{% endif %}
+            <div class="actions">
+              {% if connection.status == "reconnect_needed" %}
+                <a class="btn btn-primary btn-sm" href="{% url 'google_connect' %}">Reconnect Google</a>
+              {% endif %}
+              <form method="post" action="{% url 'google_disconnect' %}">
+                {% csrf_token %}<button class="btn btn-danger btn-sm">Disconnect</button>
+              </form>
+            </div>
+          {% else %}
+            <p class="muted small">Not connected yet.</p>
+            <a class="btn btn-primary btn-block" href="{% url 'google_connect' %}">Connect Google</a>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2 class="card-title">Settings</h2></div>
+        <div class="card-body">
+          <form method="post" action="{% url 'settings' %}">
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+            <label class="switch">
+              {{ form.agent_enabled }}
+              <div><strong>Run automatically</strong><span>Checks for new email every 5 minutes.</span></div>
+            </label>
+            <div class="field-row">
+              <div class="field"><label for="{{ form.work_start.id_for_label }}">Work starts</label>{{ form.work_start }}</div>
+              <div class="field"><label for="{{ form.work_end.id_for_label }}">Work ends</label>{{ form.work_end }}</div>
+            </div>
+            <p class="muted small">Reply time is blocked Monday to Friday within these hours.</p>
+            <button type="submit" class="btn btn-secondary btn-block">Save settings</button>
+          </form>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+</div>
+{% endblock %}

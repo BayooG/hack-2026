@@ -2,14 +2,15 @@
 
 Each one is a plain function: the code calls it directly for the required
 minimum, and Claude can call the ones in ALL as tools for anything beyond that.
-apply_label and draft_reply change the real Gmail inbox; the others only print until
-their real behaviour is specced.
+apply_label, draft_reply and block_time change the real Gmail inbox and calendar;
+notify_now and add_to_digest only print until their real behaviour is specced.
 """
 
 from email.utils import getaddresses
 
 from anthropic import beta_tool
 
+import gcal
 import gmail
 import labels
 
@@ -92,15 +93,42 @@ def add_to_digest(summary: str) -> str:
     return "added to digest"
 
 
-def block_time(title: str, minutes: int) -> str:
-    """Block the next free slot in the user's calendar to respond to an email.
+def block_time(message_id: str, title: str, minutes: int, notes: str) -> str:
+    """Block a free slot in the user's calendar to respond to an email, right
+    next to existing email time when possible, else the next free slot.
 
     Args:
+        message_id: Gmail id of the email the time is for; the event links to it.
         title: Calendar event title.
         minutes: Length of the block in minutes.
+        notes: Event description: who the email is from, what it asks, any
+            deadline, and what to prepare.
     """
-    print(f"[action] block {minutes} min in calendar: {title}")
-    return f"blocked: today 14:00 for {minutes} min"
+    if existing := gcal.find_event_for_message(message_id):
+        if existing["status"] == "cancelled":
+            return "not blocked: the user deleted the earlier block for this email"
+        return f"already blocked {gcal.format_slot(gcal.event_slot(existing))}"
+    if not (picked := gcal.reply_slot(minutes)):
+        return "error: no free slot in the next days"
+    slot, anchor = picked
+    url = gmail.message_url(message_id)
+    link = gcal.create_event(title, slot, f"{notes}\n\nEmail: {url}", message_id, url)
+    where = f"blocked {gcal.format_slot(slot)}"
+    if anchor:
+        where += f" (next to existing email time {gcal.format_slot(anchor)})"
+    print(f"[action] {where} in calendar: {title} ({link})")
+    return where
+
+
+def find_free_slots(days: int, min_minutes: int) -> str:
+    """List the user's free calendar slots during working hours, for example to propose meeting times.
+
+    Args:
+        days: How many days ahead to look, starting today.
+        min_minutes: Shortest slot worth listing, in minutes.
+    """
+    slots = gcal.free_slots(days, min_minutes)
+    return "\n".join(gcal.format_slot(s) for s in slots) or "no free slots"
 
 
 MAX_REPLY_ALL_RECIPIENTS = 10
@@ -148,5 +176,5 @@ def _others_on_thread(original: dict, to: str) -> list[str]:
 
 
 # draft_reply is left out on purpose: drafts only come from the write-reply skill.
-ALL = [apply_label, notify_now, add_to_digest, block_time]
+ALL = [apply_label, notify_now, add_to_digest, block_time, find_free_slots]
 TOOLS = [beta_tool(fn) for fn in ALL]
