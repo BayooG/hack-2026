@@ -1,2 +1,6 @@
 .venv/
 __pycache__/
+token.json
+credentials.json
+db.sqlite3
+.coverage

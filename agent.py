@@ -1,11 +1,10 @@
-"""Minimal email agent: classifies one email form (JSON) by label and urgency,
+"""Minimal email agent: classifies the newest inbox emails by label and urgency,
 runs the required actions for that urgency, then lets Claude take more.
 
 Usage:
-    python agent.py emails/instant.json
+    python agent.py [N]    # process the newest N inbox emails (default 5)
 """
 
-import json
 import sys
 from typing import Literal
 
@@ -14,12 +13,14 @@ from pydantic import BaseModel, create_model
 
 import actions
 import fake_claude
-import fake_gmail as gmail
+import gmail
 
 MODEL = "claude-opus-5-5"
+DEFAULT_COUNT = 5
 
-# True: print each Claude request and use canned answers from fake_claude.py.
-FAKE_CLAUDE = True
+# True: print each Claude request and use canned answers from fake_claude.py
+# (only works for its test ids msg_001..msg_004, not real Gmail ids).
+FAKE_CLAUDE = False
 
 Urgency = Literal["not_urgent", "for_summary", "schedule_time", "instant"]
 
@@ -133,9 +134,7 @@ def act(email: Email, result, done: list[str]) -> None:
     print("[agent]", "".join(b.text for b in final.content if b.type == "text"))
 
 
-def run(email: Email) -> None:
-    label_names = [label["name"] for label in gmail.list_labels()]
-
+def run(email: Email, label_names: list[str]) -> None:
     result = classify(email, label_names)
     print(result.model_dump_json(indent=2))
 
@@ -144,8 +143,18 @@ def run(email: Email) -> None:
 
 
 def main() -> None:
-    with open(sys.argv[1]) as f:
-        run(Email(**json.load(f)))
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_COUNT
+    label_names = [label["name"] for label in gmail.list_labels()]
+    if not label_names:
+        sys.exit("No user labels in Gmail. Create the labels the agent should choose from.")
+
+    for message in gmail.list_newest(count):
+        email = Email(**message)
+        print(f"\n=== {email.subject} ({email.sender})")
+        try:
+            run(email, label_names)
+        except Exception as e:
+            print(f"[error] {email.id}: {e}")
 
 
 if __name__ == "__main__":

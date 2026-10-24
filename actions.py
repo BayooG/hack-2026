@@ -2,12 +2,13 @@
 
 Each one is a plain function: the code calls it directly for the required
 minimum, and Claude can call it as a tool for anything beyond that.
-All of them only print until the real behaviour is specced.
+apply_label changes the real Gmail inbox; the others only print until
+their real behaviour is specced.
 """
 
 from anthropic import beta_tool
 
-import fake_gmail as gmail
+import gmail
 
 
 def apply_label(message_id: str, label_name: str) -> str:

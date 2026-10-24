@@ -1,7 +1,0 @@
-{
-  "id": "msg_002",
-  "sender": "library@university.example.edu",
-  "to": "ryan@example.com",
-  "subject": "Library opening hours change from next month",
-  "body": "Dear students and staff,\n\nFrom 1 December the main library will open at 9:00 instead of 8:00 on weekdays. Weekend hours stay the same.\n\nUniversity Library"
-}

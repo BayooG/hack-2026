@@ -1,7 +1,0 @@
-{
-  "id": "msg_001",
-  "sender": "digest@ml-weekly.example.com",
-  "to": "ryan@example.com",
-  "subject": "ML Weekly #212: this week's papers",
-  "body": "This week: five new papers on model interpretability, a tutorial on attention visualisation, and upcoming conference deadlines. Read online or unsubscribe at any time."
-}
