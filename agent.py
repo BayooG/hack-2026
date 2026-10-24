@@ -17,6 +17,7 @@ from pydantic import BaseModel, create_model
 import actions
 import gmail
 import labels
+import run_context
 
 MODEL = "claude-sonnet-5-5"
 DEFAULT_COUNT = 5
@@ -24,31 +25,34 @@ SKILLS_DIR = Path(__file__).parent / "skills"
 
 Urgency = Literal["not_urgent", "for_summary", "schedule_time", "instant"]
 
-SYSTEM_PROMPT = """You triage incoming emails.
-Pick 0 to 3 labels from the allowed labels, best fit first. Each label comes with a
-description of what belongs under it and what doesn't; follow it. Usually one is right;
-add another only when the email clearly belongs under it too. If no label fits, give
-an empty list rather than forcing one.
-Pick the urgency:
+SYSTEM_PROMPT = """You triage incoming emails. Return one result per email with the fields below.
+
+Inputs: the allowed labels, each with its description and sub-label rule, and each label's existing sub-labels.
+
+labels (list)
+Pick 0 to 3 labels from the allowed labels, best fit first. Each label's description says what belongs under it and what doesn't; follow it. Usually one label is right. Add another only when the email clearly belongs under it too. If no label fits, return an empty list rather than forcing one.
+
+urgency (one value)
 - not_urgent: no attention needed
 - for_summary: worth knowing, can wait for a digest
 - schedule_time: urgent, needs a prompt reply that takes some time to prepare
 - instant: needs attention right now
-Estimate minutes_needed: how many minutes the user needs to respond to the email,
-for example to find a meeting time and reply. Count only the response, not any
-work the email asks for.
-Set needs_reply to true only if a person is waiting for a written answer from the user;
-false for newsletters, notifications, receipts and no-reply senders.
-Give a one-sentence summary.
-For each label, decide whether the email needs a sub-label under it, following the label's
-sub-label rule. Set sublabel_needed to true only if the label covers several separate things
-that each get more than one email, such as an event, a project, a trip or an application;
-then the sub-label groups the emails about that one thing. Never for streams like newsletters,
-receipts or notifications, and never for labels whose sub-label rule is "never".
-If one of the label's existing sub-labels fits, use its exact name; otherwise give a short
-new name of 1 to 4 words without "/". Set sublabel to null when sublabel_needed is false.
-Each sub-label counts as a label: at most 3 in total, for example one label with a
-sub-label plus one more label."""
+
+minutes_needed (integer)
+How many minutes the user needs to respond to the email, for example to find a meeting time and reply. Count only the response, not any work the email asks for.
+
+needs_reply (true or false)
+True only if a person is waiting for a written answer from the user. False for newsletters, notifications, receipts and no-reply senders.
+
+summary (string)
+One sentence.
+
+sub-labels (one entry per label in labels)
+For each label:
+- sublabel_needed (true or false): True only if the label covers several separate things that each get more than one email, such as an event, a project, a trip or an application. The sub-label then groups the emails about that one thing. Never true for streams such as newsletters, receipts or notifications, and never for a label whose sub-label rule is "never".
+- sublabel (string or null): null when sublabel_needed is false. Otherwise, use the exact name of one of that label's existing sub-labels if one fits. If none fits, give a new name of 1 to 4 words without "/".
+
+Total cap: labels and sub-labels together make at most 3. A sub-label counts as a label, so one label with a sub-label plus one more label is the maximum.."""
 
 
 class Email(BaseModel):
@@ -88,8 +92,11 @@ def label_menu(label_names: list[str]) -> tuple[list[str], str]:
         line = f"- {labels.describe(parent)}"
         if labels.allows_sublabel(parent):
             # Only one level deep, so deeper labels made by hand are left out.
-            subs = [name.split("/", 1)[1] for name in label_names
-                    if name.startswith(parent + "/") and name.count("/") == 1]
+            subs = [
+                name.split("/", 1)[1]
+                for name in label_names
+                if name.startswith(parent + "/") and name.count("/") == 1
+            ]
             if subs:
                 line += f" Existing sub-labels: {', '.join(subs)}."
         lines.append(line)
@@ -124,12 +131,18 @@ def pick_labels(result) -> list[tuple[str, str | None]]:
     for choice in result.labels:
         if any(label == choice.label for label, _ in picked):
             continue
-        sublabel = choice.sublabel if choice.sublabel_needed and labels.allows_sublabel(choice.label) else None
+        sublabel = (
+            choice.sublabel
+            if choice.sublabel_needed and labels.allows_sublabel(choice.label)
+            else None
+        )
         if room < 1:
             print(f"[labels] dropped {choice.label}: max {actions.MAX_LABELS} labels")
             continue
         if sublabel and room < 2:
-            print(f"[labels] dropped sub-label {sublabel}: max {actions.MAX_LABELS} labels")
+            print(
+                f"[labels] dropped sub-label {sublabel}: max {actions.MAX_LABELS} labels"
+            )
             sublabel = None
         picked.append((choice.label, sublabel))
         room -= 2 if sublabel else 1
@@ -163,16 +176,22 @@ REQUIRED = {
             },
         )
     ],
-    "instant": [(actions.notify_now, lambda email, r: {"summary": r.summary})],
 }
+# Placeholder until there's a way to alert the user right away: instant blocks time like schedule_time.
+REQUIRED["instant"] = REQUIRED["schedule_time"]
 
 MAX_STEPS = 5
 
+
 def load_skill(name: str) -> str:
-    """The instructions of skills/<name>/SKILL.md, without its frontmatter."""
+    """The instructions of skills/<name>/SKILL.md, without its frontmatter,
+    with {user_name} and {first_name} filled in for the current user."""
     text = (SKILLS_DIR / name / "SKILL.md").read_text()
     if text.startswith("---"):
         text = text.split("---", 2)[2]
+    ctx = run_context.current()
+    user_name = f"{ctx.first_name} {ctx.last_name}".strip()
+    text = text.replace("{user_name}", user_name).replace("{first_name}", ctx.first_name)
     return text.strip()
 
 
@@ -227,7 +246,9 @@ def auto_draft(email: Email, result, done: list[str]) -> str:
     if gmail.thread_has_draft(email.thread_id):
         return "draft_reply -> skipped: this thread already has a draft"
     reply = write_reply(email, result, done)
-    outcome = actions.draft_reply(email.id, reply.body, reply.reply_all, reply.reply_all_reason)
+    outcome = actions.draft_reply(
+        email.id, reply.body, reply.reply_all, reply.reply_all_reason
+    )
     return f"draft_reply(message_id={email.id!r}, reply_all={reply.reply_all}) -> {outcome}"
 
 

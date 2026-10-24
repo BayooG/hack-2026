@@ -19,6 +19,9 @@ class RunContext:
     creds: Credentials
     work_start: time = time(9, 0)
     work_end: time = time(18, 0)
+    # The CLI has no signup, so it keeps these placeholders; web runs use the names from signup.
+    first_name: str = "Jane"
+    last_name: str = "Doe"
     _memo: dict[str, Any] = field(default_factory=dict)
 
     def cached(self, key: str, compute: Callable[[], Any]) -> Any:

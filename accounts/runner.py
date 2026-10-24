@@ -18,7 +18,12 @@ MAX_PER_RUN = 10  # emails handed to Claude per run
 def run_user(user: User) -> None:
     connection = user.google
     ctx = run_context.RunContext(
-        google_connect.credentials(connection), user.work_start, user.work_end
+        google_connect.credentials(connection),
+        user.work_start,
+        user.work_end,
+        # Accounts made before signup asked for names have none: fall back to the email's local part.
+        first_name=user.first_name or user.email.split("@")[0],
+        last_name=user.last_name,
     )
     try:
         with run_context.use(ctx):
