@@ -1,23 +1,13 @@
-"""Thin wrapper around the Gmail API.
-
-The first run opens a browser to authorize and saves token.json.
-"""
+"""Thin wrapper around the Gmail API."""
 
 import base64
 import logging
-import os
 from email.message import EmailMessage
 from functools import cache
 from html.parser import HTMLParser
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+import google_auth
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
-TOKEN_FILE = "token.json"
-CREDENTIALS_FILE = "credentials.json"
 MAX_BODY_CHARS = 8000
 # Retries for rate-limit (429, 403 rateLimitExceeded) and server errors. The client
 # backs off exponentially with jitter; 8 retries wait about 4 minutes in total, enough
@@ -32,19 +22,12 @@ logging.getLogger("googleapiclient.http").addHandler(_retry_handler)
 
 @cache
 def _service():
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE)
-        if not creds.has_scopes(SCOPES):
-            creds = None
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    elif not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0)
-    with open(TOKEN_FILE, "w") as f:
-        f.write(creds.to_json())
-    return build("gmail", "v1", credentials=creds)
+    return google_auth.service("gmail", "v1")
+
+
+def message_url(message_id: str) -> str:
+    """Link that opens the message in Gmail, in the right account."""
+    return f"https://mail.google.com/mail/?authuser={my_address()}#all/{message_id}"
 
 
 def list_labels() -> list[dict]:
