@@ -3,5 +3,6 @@ __pycache__/
 .env
 token.json
 credentials.json
-db.sqlite3
+app.db*
+db.sqlite3*
 .coverage
