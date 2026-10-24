@@ -2,11 +2,11 @@
 
 import base64
 import logging
+from datetime import datetime
 from email.message import EmailMessage
-from functools import cache
 from html.parser import HTMLParser
 
-import google_auth
+import run_context
 
 MAX_BODY_CHARS = 8000
 # Retries for rate-limit (429, 403 rateLimitExceeded) and server errors. The client
@@ -20,9 +20,16 @@ _retry_handler.setFormatter(logging.Formatter("[gmail] %(message)s"))
 logging.getLogger("googleapiclient.http").addHandler(_retry_handler)
 
 
-@cache
 def _service():
-    return google_auth.service("gmail", "v1")
+    return run_context.current().service("gmail", "v1")
+
+
+def my_address() -> str:
+    """The Gmail address of the account in the current run context."""
+    return run_context.current().cached(
+        "gmail:address",
+        lambda: _service().users().getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"],
+    )
 
 
 def message_url(message_id: str) -> str:
@@ -61,24 +68,32 @@ def set_label_color(label_id: str, color: dict) -> None:
     _service().users().labels().patch(userId="me", id=label_id, body={"color": color}).execute(num_retries=RETRIES)
 
 
+def list_inbox_ids(limit: int, after: datetime | None = None) -> list[str]:
+    """Ids of the newest inbox messages (newest first), optionally only those
+    received after a moment."""
+    query = f"after:{int(after.timestamp())}" if after else ""
+    refs = _service().users().messages().list(
+        userId="me", labelIds=["INBOX"], q=query, maxResults=limit
+    ).execute(num_retries=RETRIES)
+    return [ref["id"] for ref in refs.get("messages", [])]
+
+
+def get_email(message_id: str) -> dict:
+    """One message as {id, thread_id, sender, to, cc, subject, body}."""
+    msg = _service().users().messages().get(
+        userId="me", id=message_id, format="full"
+    ).execute(num_retries=RETRIES)
+    return _to_email(msg)
+
+
 def list_newest(n: int) -> list[dict]:
     """The newest n inbox messages as {id, thread_id, sender, to, cc, subject, body}."""
-    messages = _service().users().messages()
-    refs = messages.list(userId="me", labelIds=["INBOX"], maxResults=n).execute(num_retries=RETRIES)
-    return [
-        _to_email(messages.get(userId="me", id=ref["id"], format="full").execute(num_retries=RETRIES))
-        for ref in refs.get("messages", [])
-    ]
+    return [get_email(message_id) for message_id in list_inbox_ids(n)]
 
 
 def thread_has_draft(thread_id: str) -> bool:
     drafts = _service().users().drafts().list(userId="me", maxResults=500).execute(num_retries=RETRIES)
     return any(d["message"]["threadId"] == thread_id for d in drafts.get("drafts", []))
-
-
-@cache
-def my_address() -> str:
-    return _service().users().getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"]
 
 
 def get_reply_headers(message_id: str) -> dict:

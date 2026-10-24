@@ -1,0 +1,156 @@
+{% extends "accounts/base.html" %}
+{% block title %}Inbox Agent: your inbox, handled quietly{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div class="container">
+    <span class="eyebrow"><span class="dot"></span>Works quietly inside Gmail and Google Calendar</span>
+    <h1>Your inbox, handled quietly.</h1>
+    <p class="lead">
+      Inbox Agent reads each new email, files it under your own Gmail labels, spots what's urgent,
+      and blocks time on your calendar to reply. No new app to check.
+    </p>
+    <div class="hero-actions">
+      {% if user.is_authenticated %}
+        <a class="btn btn-primary btn-lg" href="{% url 'dashboard' %}">Open dashboard {% include "accounts/_icon.html" with name="arrow" class="icon-sm" %}</a>
+      {% else %}
+        <a class="btn btn-primary btn-lg" href="{% url 'signup' %}">Get started {% include "accounts/_icon.html" with name="arrow" class="icon-sm" %}</a>
+        <a class="btn btn-secondary btn-lg" href="{% url 'login' %}">Log in</a>
+      {% endif %}
+    </div>
+    <p class="hero-note">Never sends or deletes email · Disconnect anytime</p>
+
+    <div class="card preview" aria-hidden="true">
+      <div class="preview-bar"><span></span><span></span><span></span></div>
+      <div class="preview-body">
+        <ul class="activity preview-inbox">
+          <li>
+            <div class="subject">Your appointment today has been moved</div>
+            <div class="badges"><span class="badge">Medical</span><span class="badge badge-instant"><span class="dot"></span>Instant</span></div>
+            <div class="meta">Praxis Dr Müller · needs a reply before 12:00</div>
+          </li>
+          <li>
+            <div class="subject">Check customer stats.</div>
+            <div class="badges"><span class="badge">📌 Important</span><span class="badge badge-schedule_time"><span class="dot"></span>Schedule time</span></div>
+            <div class="meta">Niusha Shahmoradi · 15 minutes blocked to reply</div>
+          </li>
+          <li>
+            <div class="subject">Your Claude API credits</div>
+            <div class="badges"><span class="badge">🔔 Alerts</span><span class="badge badge-for_summary"><span class="dot"></span>For summary</span></div>
+            <div class="meta">Anthropic · worth knowing, can wait</div>
+          </li>
+          <li>
+            <div class="subject">New interpretability papers this week</div>
+            <div class="badges"><span class="badge">Newsletters</span><span class="badge"><span class="dot"></span>Not urgent</span></div>
+            <div class="meta">ML Weekly · filed away</div>
+          </li>
+        </ul>
+        <div class="preview-calendar">
+          <h4>Monday</h4>
+          <div class="slot"><span>09:00</span><div class="event event-agent"><strong>Reply to Niusha: Check customer stats.</strong>09:00–09:15 · added by Inbox Agent</div></div>
+          <div class="slot"><span>10:00</span><div class="event"><strong>Team standup</strong>10:00–10:30</div></div>
+          <div class="slot"><span>11:00</span><div></div></div>
+          <div class="slot"><span>12:00</span><div class="event"><strong>Lunch</strong>12:00–13:00</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">How it works</div>
+      <h2>Set it up once. Then forget it's there.</h2>
+      <p>Inbox Agent works inside the tools you already use, so there's nothing new to learn.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card tile">
+        <span class="step-number">1</span>
+        <h3>Connect Google</h3>
+        <p>Create an account, then allow access to Gmail and Calendar on a single Google screen.</p>
+      </div>
+      <div class="card tile">
+        <span class="step-number">2</span>
+        <h3>New email gets triaged</h3>
+        <p>Every few minutes, each new message is matched to one of your labels and given an urgency.</p>
+      </div>
+      <div class="card tile">
+        <span class="step-number">3</span>
+        <h3>Your day adjusts itself</h3>
+        <p>Emails are labelled in Gmail, and the ones that need a careful reply get time on your calendar.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">Features</div>
+      <h2>The busywork, done for you</h2>
+      <p>The small decisions every email asks for, taken care of before you open your inbox.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card tile">
+        <span class="feature-icon">{% include "accounts/_icon.html" with name="tag" %}</span>
+        <h3>Your labels, applied for you</h3>
+        <p>Uses the labels you already have in Gmail, so your setup stays exactly as it is.</p>
+      </div>
+      <div class="card tile">
+        <span class="feature-icon">{% include "accounts/_icon.html" with name="bell" %}</span>
+        <h3>Knows what's urgent</h3>
+        <p>Each email is sorted into not urgent, worth a summary, needs time to answer, or needs you now.</p>
+      </div>
+      <div class="card tile">
+        <span class="feature-icon">{% include "accounts/_icon.html" with name="calendar" %}</span>
+        <h3>Time to reply, on your calendar</h3>
+        <p>Books the next free slot in your working hours, with the sender, a summary and a link to the email.</p>
+      </div>
+      <div class="card tile">
+        <span class="feature-icon">{% include "accounts/_icon.html" with name="clock" %}</span>
+        <h3>Runs on its own</h3>
+        <p>Checks for new mail every five minutes and handles each email once. Delete a block and it stays deleted.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">Safety</div>
+      <h2>Built to stay out of your way</h2>
+      <p>Inbox Agent only does the few things you'd want it to, and nothing else.</p>
+    </div>
+    <ul class="checklist">
+      <li>{% include "accounts/_icon.html" with name="check" %}<span>Never sends, deletes or archives your email</span></li>
+      <li>{% include "accounts/_icon.html" with name="check" %}<span>Only handles email that arrives after you connect</span></li>
+      <li>{% include "accounts/_icon.html" with name="check" %}<span>Google access is stored encrypted and can be revoked anytime</span></li>
+      <li>{% include "accounts/_icon.html" with name="check" %}<span>Pause it or change your working hours whenever you like</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="card cta">
+      <h2>Give your inbox a quiet assistant.</h2>
+      <p>Two minutes to set up. Works with the Gmail and Calendar you already use.</p>
+      {% if user.is_authenticated %}
+        <a class="btn btn-primary btn-lg" href="{% url 'dashboard' %}">Open dashboard</a>
+      {% else %}
+        <a class="btn btn-primary btn-lg" href="{% url 'signup' %}">Create your account</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    {% include "accounts/_brand.html" %}
+    <span>© {% now "Y" %} Inbox Agent</span>
+  </div>
+</footer>
+
+{% endblock %}

@@ -6,27 +6,29 @@ Usage:
 
 import sys
 from datetime import date, datetime, time, timedelta
-from functools import cache
 from zoneinfo import ZoneInfo
 
-import google_auth
+import run_context
 
-WORK_START = time(9, 0)
-WORK_END = time(18, 0)
-WORKDAYS = range(0, 5)  # Monday to Friday
+WORKDAYS = range(0, 5)  # Monday to Friday; working hours come from the run context
+
+# Events with these words in the title count as email time to group reply blocks with.
+GROUP_KEYWORDS = ("reply", "replies", "email", "inbox")
+# Group with existing email time only if that delays the block by at most this much.
+MAX_GROUP_DELAY = timedelta(days=1)
 
 Slot = tuple[datetime, datetime]
 
 
-@cache
 def _service():
-    return google_auth.service("calendar", "v3")
+    return run_context.current().service("calendar", "v3")
 
 
-@cache
 def _timezone() -> ZoneInfo:
-    calendar = _service().calendars().get(calendarId="primary").execute()
-    return ZoneInfo(calendar["timeZone"])
+    return run_context.current().cached(
+        "calendar:timezone",
+        lambda: ZoneInfo(_service().calendars().get(calendarId="primary").execute()["timeZone"]),
+    )
 
 
 def _busy(start: datetime, end: datetime) -> list[Slot]:
@@ -42,26 +44,37 @@ def _busy(start: datetime, end: datetime) -> list[Slot]:
     )
 
 
-def free_slots(days: int = 5, min_minutes: int = 30) -> list[Slot]:
-    """Free slots of at least min_minutes within working hours, from now on."""
+def _window(days: int) -> Slot:
+    """From now (rounded up to the quarter hour) to the end of the last day."""
     tz = _timezone()
     now = datetime.now(tz).replace(second=0, microsecond=0)
     now += timedelta(minutes=-now.minute % 15)
+    return now, datetime.combine(now.date() + timedelta(days=days), time.min, tz)
+
+
+def free_slots(days: int = 5, min_minutes: int = 30) -> list[Slot]:
+    """Free slots of at least min_minutes within working hours, from now on."""
+    ctx = run_context.current()
+    hours = (ctx.work_start, ctx.work_end)
+    tz = _timezone()
+    now, end = _window(days)
     today = now.date()
-    end = datetime.combine(today + timedelta(days=days), time.min, tz)
     busy = _busy(now, end)
 
     slots = []
     for offset in range(days):
         day = today + timedelta(days=offset)
         if day.weekday() in WORKDAYS:
-            slots += _gaps(day, tz, now, busy, timedelta(minutes=min_minutes))
+            slots += _gaps(day, hours, tz, now, busy, timedelta(minutes=min_minutes))
     return slots
 
 
-def _gaps(day: date, tz: ZoneInfo, now: datetime, busy: list[Slot], min_length: timedelta) -> list[Slot]:
-    cursor = max(datetime.combine(day, WORK_START, tz), now)
-    day_end = datetime.combine(day, WORK_END, tz)
+def _gaps(
+    day: date, hours: tuple[time, time], tz: ZoneInfo, now: datetime,
+    busy: list[Slot], min_length: timedelta,
+) -> list[Slot]:
+    cursor = max(datetime.combine(day, hours[0], tz), now)
+    day_end = datetime.combine(day, hours[1], tz)
     gaps = []
     for busy_start, busy_end in busy:
         if busy_end <= cursor or busy_start >= day_end:
@@ -72,6 +85,52 @@ def _gaps(day: date, tz: ZoneInfo, now: datetime, busy: list[Slot], min_length: 
     if day_end - cursor >= min_length:
         gaps.append((cursor, day_end))
     return gaps
+
+
+def _email_blocks(start: datetime, end: datetime) -> list[Slot]:
+    """Timed events in the range that are email time: the agent's own reply
+    blocks or the user's events with a GROUP_KEYWORDS word in the title."""
+    events = _service().events().list(
+        calendarId="primary", timeMin=start.isoformat(), timeMax=end.isoformat(),
+        singleEvents=True, orderBy="startTime",
+    ).execute()["items"]
+    return [
+        event_slot(e) for e in events
+        if "dateTime" in e["start"] and (
+            "gmailMessageId" in e.get("extendedProperties", {}).get("private", {})
+            or any(word in e.get("summary", "").lower() for word in GROUP_KEYWORDS)
+        )
+    ]
+
+
+def _pick_slot(slots: list[Slot], anchors: list[Slot], minutes: int) -> tuple[Slot, Slot | None] | None:
+    """A slot of the given length, right before or after an anchor if one is
+    free soon enough, else at the start of the first free slot. Returns the
+    slot and the anchor it is next to (or None)."""
+    if not slots:
+        return None
+    length = timedelta(minutes=minutes)
+    candidates = []
+    for start, end in slots:
+        for anchor in anchors:
+            if start == anchor[1]:
+                candidates.append(((start, start + length), anchor))
+            if end == anchor[0]:
+                candidates.append(((end - length, end), anchor))
+    first = slots[0][0]
+    if candidates:
+        slot, anchor = min(candidates)
+        if slot[0] - first <= MAX_GROUP_DELAY:
+            return slot, anchor
+    return (first, first + length), None
+
+
+def reply_slot(minutes: int, days: int = 5) -> tuple[Slot, Slot | None] | None:
+    """Where to block reply time: next to existing email time when possible.
+    Returns the slot and the email-time event it is next to (or None), or
+    None if there is no free slot."""
+    slots = free_slots(days, minutes)
+    return _pick_slot(slots, _email_blocks(*_window(days)), minutes)
 
 
 def find_event_for_message(message_id: str) -> dict | None:

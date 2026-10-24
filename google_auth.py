@@ -1,4 +1,4 @@
-"""Shared Google OAuth for Gmail and Calendar.
+"""Google OAuth for the CLI, and the scopes the agent needs.
 
 The first run (or a run after SCOPES change) opens a browser to authorize
 and saves token.json.
@@ -10,7 +10,6 @@ from functools import cache
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
@@ -36,7 +35,3 @@ def credentials() -> Credentials:
     with open(TOKEN_FILE, "w") as f:
         f.write(creds.to_json())
     return creds
-
-
-def service(name: str, version: str):
-    return build(name, version, credentials=credentials())

@@ -1,0 +1,24 @@
+from django.contrib import admin
+
+from .models import GoogleConnection, ProcessedEmail, User
+
+
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ("email", "agent_enabled", "work_start", "work_end", "date_joined")
+    fields = ("email", "agent_enabled", "work_start", "work_end", "is_active", "is_staff", "is_superuser")
+    search_fields = ("email",)
+
+
+@admin.register(GoogleConnection)
+class GoogleConnectionAdmin(admin.ModelAdmin):
+    list_display = ("user", "google_email", "status", "connected_at", "last_run_at", "last_error")
+    exclude = ("refresh_token",)
+    readonly_fields = ("connected_at", "last_run_at")
+
+
+@admin.register(ProcessedEmail)
+class ProcessedEmailAdmin(admin.ModelAdmin):
+    list_display = ("processed_at", "user", "subject", "labels", "urgency", "status")
+    list_filter = ("status", "urgency")
+    search_fields = ("subject", "user__email")

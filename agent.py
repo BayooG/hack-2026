@@ -257,12 +257,13 @@ def act(email: Email, result, done: list[str]) -> None:
     print("[agent]", "".join(b.text for b in final.content if b.type == "text"))
 
 
-def run(email: Email, label_names: list[str]) -> None:
+def run(email: Email, label_names: list[str]):
     result = classify(email, label_names)
     print(result.model_dump_json(indent=2))
 
     done = run_required(email, result)
     act(email, result, done)
+    return result
 
 
 def main() -> None:

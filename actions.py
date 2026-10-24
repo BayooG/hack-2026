@@ -6,7 +6,6 @@ apply_label, draft_reply and block_time change the real Gmail inbox and calendar
 notify_now and add_to_digest only print until their real behaviour is specced.
 """
 
-from datetime import timedelta
 from email.utils import getaddresses
 
 from anthropic import beta_tool
@@ -95,7 +94,8 @@ def add_to_digest(summary: str) -> str:
 
 
 def block_time(message_id: str, title: str, minutes: int, notes: str) -> str:
-    """Block the next free slot in the user's calendar to respond to an email.
+    """Block a free slot in the user's calendar to respond to an email, right
+    next to existing email time when possible, else the next free slot.
 
     Args:
         message_id: Gmail id of the email the time is for; the event links to it.
@@ -108,15 +108,16 @@ def block_time(message_id: str, title: str, minutes: int, notes: str) -> str:
         if existing["status"] == "cancelled":
             return "not blocked: the user deleted the earlier block for this email"
         return f"already blocked {gcal.format_slot(gcal.event_slot(existing))}"
-    slots = gcal.free_slots(min_minutes=minutes)
-    if not slots:
+    if not (picked := gcal.reply_slot(minutes)):
         return "error: no free slot in the next days"
-    start, _ = slots[0]
-    slot = (start, start + timedelta(minutes=minutes))
+    slot, anchor = picked
     url = gmail.message_url(message_id)
     link = gcal.create_event(title, slot, f"{notes}\n\nEmail: {url}", message_id, url)
-    print(f"[action] blocked {gcal.format_slot(slot)} in calendar: {title} ({link})")
-    return f"blocked {gcal.format_slot(slot)}"
+    where = f"blocked {gcal.format_slot(slot)}"
+    if anchor:
+        where += f" (next to existing email time {gcal.format_slot(anchor)})"
+    print(f"[action] {where} in calendar: {title} ({link})")
+    return where
 
 
 def find_free_slots(days: int, min_minutes: int) -> str:

@@ -1,0 +1,17 @@
+{% extends "accounts/base.html" %}
+{% block title %}Log in · Inbox Agent{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="card auth-card">
+    <h1>Welcome back</h1>
+    <p class="lead">Log in to see what your agent has been up to.</p>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% for error in form.non_field_errors %}<div class="alert alert-error">{{ error }}</div>{% endfor %}
+      {% for field in form %}{% include "accounts/_field.html" %}{% endfor %}
+      <button type="submit" class="btn btn-primary btn-lg btn-block">Log in</button>
+    </form>
+    <p class="auth-footer">New here? <a href="{% url 'signup' %}">Create an account</a></p>
+  </div>
+</div>
+{% endblock %}
