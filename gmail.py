@@ -2,7 +2,7 @@
 
 import base64
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from html.parser import HTMLParser
 
@@ -66,6 +66,39 @@ def create_label(name: str, color: dict | None = None) -> str:
 
 def set_label_color(label_id: str, color: dict) -> None:
     _service().users().labels().patch(userId="me", id=label_id, body={"color": color}).execute(num_retries=RETRIES)
+
+
+def get_label(label_id: str) -> dict:
+    """One label with its counts (threadsTotal, messagesTotal, ...)."""
+    return _service().users().labels().get(userId="me", id=label_id).execute(num_retries=RETRIES)
+
+
+def delete_label(label_id: str) -> None:
+    """Delete a label. Its messages stay, just without this label."""
+    _service().users().labels().delete(userId="me", id=label_id).execute(num_retries=RETRIES)
+
+
+def list_label_ids(label_id: str, limit: int = 500) -> list[str]:
+    """Ids of the messages under a label, newest first."""
+    refs = _service().users().messages().list(
+        userId="me", labelIds=[label_id], maxResults=limit
+    ).execute(num_retries=RETRIES)
+    return [ref["id"] for ref in refs.get("messages", [])]
+
+
+def get_summary(message_id: str) -> dict:
+    """One message as {id, date, sender, subject, snippet}, without its body."""
+    msg = _service().users().messages().get(
+        userId="me", id=message_id, format="metadata", metadataHeaders=["From", "Subject"]
+    ).execute(num_retries=RETRIES)
+    headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
+    return {
+        "id": msg["id"],
+        "date": datetime.fromtimestamp(int(msg["internalDate"]) / 1000, timezone.utc),
+        "sender": headers.get("from", ""),
+        "subject": headers.get("subject", ""),
+        "snippet": msg.get("snippet", ""),
+    }
 
 
 def list_inbox_ids(limit: int, after: datetime | None = None) -> list[str]:
