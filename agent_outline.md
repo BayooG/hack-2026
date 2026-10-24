@@ -105,3 +105,5 @@ Decide what the agent may do alone and what needs your approval, then test each 
 
 - Single agent with skills, or an orchestrator with subagents?
 - Where does memory live: files, a database, or a notes app?
+
+- can we integrate dynamic emails ?

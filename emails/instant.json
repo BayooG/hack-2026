@@ -1,0 +1,7 @@
+{
+  "id": "msg_004",
+  "sender": "appointments@praxis-mueller.example.de",
+  "to": "ryan@example.com",
+  "subject": "Your appointment today has been moved",
+  "body": "Dear Mr Gumsheimer,\n\nDr Müller is unavailable this morning, so your 10:30 appointment today has been moved to 15:00 today. Please confirm by replying before 12:00, or your slot will be given to another patient.\n\nPraxis Dr Müller"
+}
