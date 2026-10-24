@@ -30,14 +30,27 @@ class AccountViewsTests(TestCase):
         self.assertContains(self.client.get(reverse("home")), "Open dashboard")
 
     def test_signup_logs_in_and_rejects_duplicate_email_in_any_case(self):
-        data = {"email": "New@Example.com", "password1": "a-long-password", "password2": "a-long-password"}
+        data = {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "New@Example.com",
+            "password1": "a-long-password",
+            "password2": "a-long-password",
+        }
         response = self.client.post(reverse("signup"), data)
         self.assertRedirects(response, reverse("dashboard"))
-        self.assertTrue(User.objects.filter(email="new@example.com").exists())
+        user = User.objects.get(email="new@example.com")
+        self.assertEqual((user.first_name, user.last_name), ("Ada", "Lovelace"))
 
         self.client.logout()
         response = self.client.post(reverse("signup"), {**data, "email": "NEW@example.com"})
         self.assertContains(response, "already exists")
+
+    def test_signup_requires_first_and_last_name(self):
+        data = {"email": "new@example.com", "password1": "a-long-password", "password2": "a-long-password"}
+        response = self.client.post(reverse("signup"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(email="new@example.com").exists())
 
     def test_login_is_case_insensitive(self):
         User.objects.create_user("a@example.com", "a-long-password")

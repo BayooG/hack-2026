@@ -5,9 +5,9 @@ from .models import GoogleConnection, ProcessedEmail, User
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ("email", "agent_enabled", "work_start", "work_end", "date_joined")
-    fields = ("email", "agent_enabled", "work_start", "work_end", "is_active", "is_staff", "is_superuser")
-    search_fields = ("email",)
+    list_display = ("email", "first_name", "last_name", "agent_enabled", "work_start", "work_end", "date_joined")
+    fields = ("email", "first_name", "last_name", "agent_enabled", "work_start", "work_end", "is_active", "is_staff", "is_superuser")
+    search_fields = ("email", "first_name", "last_name")
 
 
 @admin.register(GoogleConnection)
