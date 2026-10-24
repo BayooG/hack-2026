@@ -238,7 +238,7 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 }
 .day-picker input:checked + span { color: #fff; background: var(--accent); border-color: var(--accent); }
 .day-picker input:focus-visible + span { box-shadow: 0 0 0 3px var(--accent-soft); }
-.day-picker input:disabled + span { opacity: 0.5; }
+[hidden].day-picker, [hidden].field-row { display: none; }
 
 /* Alerts */
 .messages { padding-top: 24px; }

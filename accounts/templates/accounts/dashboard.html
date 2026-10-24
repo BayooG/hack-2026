@@ -123,7 +123,7 @@
             {% for error in form.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
             <label class="switch">
               {{ form.agent_enabled }}
-              <div><strong>Run automatically</strong><span>Checks for new email every 5 minutes.</span></div>
+              <div><strong>Run automatically</strong></div>
             </label>
             <label class="switch">
               {{ form.cleanup_enabled }}
@@ -150,11 +150,11 @@
               (function () {
                 var allDays = document.getElementById("{{ form.all_days.id_for_label }}");
                 var anytime = document.getElementById("{{ form.anytime.id_for_label }}");
-                var days = document.querySelectorAll("#day-picker input");
-                var hours = document.querySelectorAll("#work-hours input");
+                var days = document.getElementById("day-picker");
+                var hours = document.getElementById("work-hours");
                 function sync() {
-                  days.forEach(function (el) { el.disabled = allDays.checked; });
-                  hours.forEach(function (el) { el.disabled = anytime.checked; });
+                  days.hidden = allDays.checked;
+                  hours.hidden = anytime.checked;
                 }
                 allDays.addEventListener("change", sync);
                 anytime.addEventListener("change", sync);
