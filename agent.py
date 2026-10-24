@@ -6,6 +6,7 @@ Usage:
 """
 
 import sys
+from email.utils import parseaddr
 from typing import Literal
 
 import anthropic
@@ -77,6 +78,11 @@ def classify(email: Email, label_names: list[str]) -> BaseModel:
     return response.parsed_output
 
 
+def sender_name(email: Email) -> str:
+    name, address = parseaddr(email.sender)
+    return name or address
+
+
 # The minimum that always happens, run by code (not Claude).
 # Each entry: (action, how to build its arguments from the email and result).
 ALWAYS = [(actions.apply_label, lambda email, r: {"message_id": email.id, "label_name": r.label})]
@@ -85,7 +91,11 @@ REQUIRED = {
     "not_urgent": [],
     "for_summary": [(actions.add_to_digest, lambda email, r: {"summary": r.summary})],
     "schedule_time": [(actions.block_time, lambda email, r: {
-        "title": f"Respond: {email.subject}", "minutes": r.minutes_needed,
+        "message_id": email.id,
+        "title": f"Reply to {sender_name(email)}: {email.subject}",
+        "minutes": r.minutes_needed,
+        "notes": f"From: {email.sender}\nSubject: {email.subject}\n"
+        f"Label: {r.label}\n\n{r.summary}",
     })],
     "instant": [(actions.notify_now, lambda email, r: {"summary": r.summary})],
 }
