@@ -10,8 +10,6 @@ from zoneinfo import ZoneInfo
 
 import run_context
 
-WORKDAYS = range(0, 5)  # Monday to Friday; working hours come from the run context
-
 # Events with these words in the title count as email time to group reply blocks with.
 GROUP_KEYWORDS = ("reply", "replies", "email", "inbox")
 # Group with existing email time only if that delays the block by at most this much.
@@ -55,7 +53,7 @@ def _window(days: int) -> Slot:
 def free_slots(days: int = 5, min_minutes: int = 30) -> list[Slot]:
     """Free slots of at least min_minutes within working hours, from now on."""
     ctx = run_context.current()
-    hours = (ctx.work_start, ctx.work_end)
+    hours = None if ctx.anytime else (ctx.work_start, ctx.work_end)
     tz = _timezone()
     now, end = _window(days)
     today = now.date()
@@ -64,17 +62,21 @@ def free_slots(days: int = 5, min_minutes: int = 30) -> list[Slot]:
     slots = []
     for offset in range(days):
         day = today + timedelta(days=offset)
-        if day.weekday() in WORKDAYS:
+        if day.weekday() in ctx.work_days:
             slots += _gaps(day, hours, tz, now, busy, timedelta(minutes=min_minutes))
     return slots
 
 
 def _gaps(
-    day: date, hours: tuple[time, time], tz: ZoneInfo, now: datetime,
+    day: date, hours: tuple[time, time] | None, tz: ZoneInfo, now: datetime,
     busy: list[Slot], min_length: timedelta,
 ) -> list[Slot]:
-    cursor = max(datetime.combine(day, hours[0], tz), now)
-    day_end = datetime.combine(day, hours[1], tz)
+    """Free gaps in one day; hours=None means the whole day."""
+    if hours is None:
+        day_start, day_end = (datetime.combine(d, time.min, tz) for d in (day, day + timedelta(days=1)))
+    else:
+        day_start, day_end = datetime.combine(day, hours[0], tz), datetime.combine(day, hours[1], tz)
+    cursor = max(day_start, now)
     gaps = []
     for busy_start, busy_end in busy:
         if busy_end <= cursor or busy_start >= day_end:

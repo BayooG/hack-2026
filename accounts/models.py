@@ -23,6 +23,10 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, is_staff=True, is_superuser=True, **extra_fields)
 
 
+def default_work_days() -> list[int]:
+    return [0, 1, 2, 3, 4]  # Monday to Friday
+
+
 class User(AbstractUser):
     """Logs in with email; also holds the user's agent settings."""
 
@@ -31,6 +35,9 @@ class User(AbstractUser):
     agent_enabled = models.BooleanField(default=True)
     work_start = models.TimeField(default=time(9, 0))
     work_end = models.TimeField(default=time(18, 0))
+    work_days = models.JSONField(default=default_work_days, help_text="Weekdays, 0 = Monday")
+    all_days = models.BooleanField(default=False, help_text="Available every day; work_days is ignored")
+    anytime = models.BooleanField(default=False, help_text="Available all day; work_start and work_end are ignored")
     run_requested_at = models.DateTimeField(null=True, blank=True)
     # Off: sub-label cleanup only reports what it would delete.
     cleanup_enabled = models.BooleanField(default=False)
@@ -40,6 +47,9 @@ class User(AbstractUser):
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    def available_weekdays(self) -> tuple[int, ...]:
+        return tuple(range(7)) if self.all_days else tuple(sorted(self.work_days))
 
 
 class Label(models.Model):

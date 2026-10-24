@@ -26,21 +26,32 @@ class SignupForm(BaseUserCreationForm):
         return email
 
 
+WEEKDAYS = [(0, "Mon"), (1, "Tue"), (2, "Wed"), (3, "Thu"), (4, "Fri"), (5, "Sat"), (6, "Sun")]
+
+
 class SettingsForm(forms.ModelForm):
+    work_days = forms.TypedMultipleChoiceField(
+        choices=WEEKDAYS, coerce=int, required=False, widget=forms.CheckboxSelectMultiple,
+    )
+
     class Meta:
         model = User
-        fields = ("agent_enabled", "cleanup_enabled", "work_start", "work_end")
+        fields = ("agent_enabled", "cleanup_enabled", "all_days", "work_days", "anytime", "work_start", "work_end")
         widgets = {
             "agent_enabled": forms.CheckboxInput(attrs={"role": "switch"}),
             "cleanup_enabled": forms.CheckboxInput(attrs={"role": "switch"}),
+            "all_days": forms.CheckboxInput(attrs={"role": "switch"}),
+            "anytime": forms.CheckboxInput(attrs={"role": "switch"}),
             "work_start": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
             "work_end": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
         }
 
     def clean(self):
         cleaned = super().clean()
+        if not cleaned.get("all_days") and not cleaned.get("work_days"):
+            self.add_error(None, "Pick at least one day.")
         start, end = cleaned.get("work_start"), cleaned.get("work_end")
-        if start and end and start >= end:
+        if not cleaned.get("anytime") and start and end and start >= end:
             raise forms.ValidationError("Working hours must end after they start.")
         return cleaned
 

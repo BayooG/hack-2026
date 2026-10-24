@@ -129,11 +129,38 @@
               {{ form.cleanup_enabled }}
               <div><strong>Delete finished sub-labels</strong><span>Once a month, or when you click Clean up. Off: only counts what it would delete.</span></div>
             </label>
-            <div class="field-row">
+              {{ form.all_days }}
+              <div><strong>All days</strong><span>Available every day of the week.</span></div>
+            </label>
+            <div class="day-picker" id="day-picker">
+              {% for day in form.work_days %}
+                <label>{{ day.tag }}<span>{{ day.choice_label }}</span></label>
+              {% endfor %}
+            </div>
+            <label class="switch">
+              {{ form.anytime }}
+              <div><strong>Anytime</strong><span>Available all day, ignoring the hours below.</span></div>
+            </label>
+            <div class="field-row" id="work-hours">
               <div class="field"><label for="{{ form.work_start.id_for_label }}">Work starts</label>{{ form.work_start }}</div>
               <div class="field"><label for="{{ form.work_end.id_for_label }}">Work ends</label>{{ form.work_end }}</div>
             </div>
-            <p class="muted small">Reply time is blocked Monday to Friday within these hours.</p>
+            <p class="muted small">Reply time is blocked on the selected days within these hours.</p>
+            <script>
+              (function () {
+                var allDays = document.getElementById("{{ form.all_days.id_for_label }}");
+                var anytime = document.getElementById("{{ form.anytime.id_for_label }}");
+                var days = document.querySelectorAll("#day-picker input");
+                var hours = document.querySelectorAll("#work-hours input");
+                function sync() {
+                  days.forEach(function (el) { el.disabled = allDays.checked; });
+                  hours.forEach(function (el) { el.disabled = anytime.checked; });
+                }
+                allDays.addEventListener("change", sync);
+                anytime.addEventListener("change", sync);
+                sync();
+              })();
+            </script>
             <button type="submit" class="btn btn-secondary btn-block">Save settings</button>
           </form>
         </div>

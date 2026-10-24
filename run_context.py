@@ -19,6 +19,8 @@ class RunContext:
     creds: Credentials
     work_start: time = time(9, 0)
     work_end: time = time(18, 0)
+    work_days: tuple[int, ...] = (0, 1, 2, 3, 4)  # weekdays, 0 = Monday
+    anytime: bool = False  # ignore work_start and work_end
     # The CLI has no signup, so it keeps these placeholders; web runs use the names from signup.
     first_name: str = "Jane"
     last_name: str = "Doe"

@@ -23,6 +23,8 @@ def context(user: User) -> run_context.RunContext:
         google_connect.credentials(user.google),
         user.work_start,
         user.work_end,
+        work_days=user.available_weekdays(),
+        anytime=user.anytime,
         # Accounts made before signup asked for names have none: fall back to the email's local part.
         first_name=user.first_name or user.email.split("@")[0],
         last_name=user.last_name,

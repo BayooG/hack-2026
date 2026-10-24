@@ -1,4 +1,5 @@
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 from unittest import mock
 
@@ -7,6 +8,7 @@ from django.urls import reverse
 from google.auth.exceptions import RefreshError
 
 import agent
+import gcal
 import labels
 import run_context
 import sublabel_cleanup
@@ -70,6 +72,33 @@ class AccountViewsTests(TestCase):
         self.assertContains(response, "must end after")
         user.refresh_from_db()
         self.assertEqual(user.work_start, time(9, 0))
+
+    def test_settings_save_selected_days(self):
+        user = make_connected_user()
+        self.client.force_login(user)
+        data = {"work_start": "08:00", "work_end": "16:00", "work_days": ["0", "2", "5"]}
+        self.assertRedirects(self.client.post(reverse("settings"), data), reverse("dashboard"))
+        user.refresh_from_db()
+        self.assertEqual(user.work_days, [0, 2, 5])
+        self.assertEqual(user.available_weekdays(), (0, 2, 5))
+
+    def test_settings_require_a_day_unless_all_days(self):
+        user = make_connected_user()
+        self.client.force_login(user)
+        hours = {"work_start": "09:00", "work_end": "17:00"}
+        self.assertContains(self.client.post(reverse("settings"), hours), "Pick at least one day")
+        self.client.post(reverse("settings"), {**hours, "all_days": "on"})
+        user.refresh_from_db()
+        self.assertTrue(user.all_days)
+        self.assertEqual(user.available_weekdays(), tuple(range(7)))
+
+    def test_anytime_ignores_hours_order(self):
+        user = make_connected_user()
+        self.client.force_login(user)
+        data = {"work_start": "18:00", "work_end": "09:00", "work_days": ["1"], "anytime": "on"}
+        self.assertRedirects(self.client.post(reverse("settings"), data), reverse("dashboard"))
+        user.refresh_from_db()
+        self.assertTrue(user.anytime)
 
     def test_connect_explains_missing_google_client(self):
         self.client.force_login(User.objects.create_user("a@example.com", "a-long-password"))
@@ -477,3 +506,30 @@ class CleanupRunnerTests(TestCase):
         self.client.post(reverse("cleanup_now"))
         user.refresh_from_db()
         self.assertIsNone(user.cleanup_requested_at)
+
+class GcalAvailabilityTests(TestCase):
+    tz = ZoneInfo("UTC")
+    day = date(2030, 1, 7)  # a Monday
+
+    def _gaps(self, hours):
+        now = datetime.combine(self.day, time.min, self.tz)
+        return gcal._gaps(self.day, hours, self.tz, now, [], timedelta(minutes=30))
+
+    def test_working_hours_limit_the_slot(self):
+        (start, end), = self._gaps((time(9, 0), time(18, 0)))
+        self.assertEqual((start.hour, end.hour), (9, 18))
+
+    def test_anytime_covers_the_whole_day(self):
+        (start, end), = self._gaps(None)
+        self.assertEqual(end - start, timedelta(days=1))
+
+    def test_free_slots_only_on_available_days(self):
+        ctx = gcal.run_context.RunContext(None, work_days=(0,), anytime=True)
+        now = datetime.combine(self.day, time.min, self.tz)
+        with gcal.run_context.use(ctx), \
+                mock.patch.object(gcal, "_timezone", return_value=self.tz), \
+                mock.patch.object(gcal, "_window", return_value=(now, now + timedelta(days=3))), \
+                mock.patch.object(gcal, "_busy", return_value=[]):
+            slots = gcal.free_slots(3)
+        self.assertEqual([s[0].date() for s in slots], [self.day])
+
