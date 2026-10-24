@@ -189,8 +189,9 @@ def load_skill(name: str) -> str:
     text = (SKILLS_DIR / name / "SKILL.md").read_text()
     if text.startswith("---"):
         text = text.split("---", 2)[2]
-    user_name = run_context.current().user_name
-    text = text.replace("{user_name}", user_name).replace("{first_name}", user_name.split()[0])
+    ctx = run_context.current()
+    user_name = f"{ctx.first_name} {ctx.last_name}".strip()
+    text = text.replace("{user_name}", user_name).replace("{first_name}", ctx.first_name)
     return text.strip()
 
 

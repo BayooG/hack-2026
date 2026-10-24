@@ -125,6 +125,13 @@ class RunnerTests(TestCase):
         self.assertEqual(self.user.processed_emails.get(message_id="m3").label_list, ["Work/Launch", "Team"])
         self.assertEqual(self.user.google.last_error, "")
 
+    def test_reply_skill_uses_the_users_name(self, _):
+        self.user.first_name, self.user.last_name = "Ada", "Lovelace"
+        skills = []
+        with mock.patch.object(runner.agent, "run", lambda email, labels: skills.append(runner.agent.load_skill("write-reply"))):
+            runner.run_user(self.user)
+        self.assertIn('Sign off with "Ada" for casual emails, "Ada Lovelace" for formal ones.', skills[0])
+
     def test_failed_email_is_recorded_and_not_retried(self, _):
         with mock.patch.object(runner.agent, "run", side_effect=ValueError("bad email")):
             runner.run_user(self.user)
