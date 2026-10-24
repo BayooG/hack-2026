@@ -14,7 +14,8 @@ POLL_SECONDS = 10
 
 class Command(BaseCommand):
     help = (
-        "Run the agent for every enabled user every 5 minutes, and on 'Run now'. "
+        "Run the agent for every enabled user every 5 minutes, and on 'Run now' "
+        "(which reprocesses the user's newest emails). "
         "Run sub-label cleanup once a month, and on 'Clean up sub-labels'."
     )
 
@@ -33,7 +34,8 @@ class Command(BaseCommand):
                 # Clear first, so a click during this run triggers another one.
                 User.objects.filter(pk=user.pk).update(run_requested_at=None)
                 self.stdout.write(f"{timezone.now():%H:%M:%S} running for {user.email}")
-                runner.run_user(user)
+                rerun = runner.RUN_NOW_NEWEST if user.run_requested_at else 0
+                runner.run_user(user, rerun_newest=rerun)
             self.clean_up_sublabels()
             time.sleep(POLL_SECONDS)
 

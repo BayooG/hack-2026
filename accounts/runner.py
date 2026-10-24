@@ -14,6 +14,7 @@ from .models import GoogleConnection, ProcessedEmail, User, user_labels
 
 LOOKBACK = 100    # newest inbox ids to check for unprocessed emails
 MAX_PER_RUN = 10  # emails handed to Claude per run
+RUN_NOW_NEWEST = 5  # newest inbox emails "Run now" reprocesses, done or not
 
 
 def context(user: User) -> run_context.RunContext:
@@ -29,12 +30,14 @@ def context(user: User) -> run_context.RunContext:
     )
 
 
-def run_user(user: User) -> None:
+def run_user(user: User, rerun_newest: int = 0) -> None:
+    """Process the user's new emails, or with rerun_newest, their newest that
+    many inbox emails, even ones already processed or from before connecting."""
     connection = user.google
     ctx = context(user)
     try:
         with run_context.use(ctx):
-            _process_new_emails(user, connection)
+            _process_emails(user, connection, rerun_newest)
         connection.last_error = ""
     except RefreshError:
         connection.status = GoogleConnection.Status.RECONNECT_NEEDED
@@ -49,18 +52,21 @@ def _label_names() -> list[str]:
     return [label["name"] for label in gmail.list_labels()]
 
 
-def _process_new_emails(user: User, connection: GoogleConnection) -> None:
+def _process_emails(user: User, connection: GoogleConnection, rerun_newest: int) -> None:
     label_names = _label_names()
     if not [name for name in label_names if "/" not in name]:
         raise RuntimeError("No labels in Gmail. Create the labels the agent should choose from.")
     for warning in labels.check(label_names):
         print(f"[labels] {user.email}: {warning}")
 
-    ids = gmail.list_inbox_ids(LOOKBACK, after=connection.connected_at)
-    done = set(user.processed_emails.filter(message_id__in=ids).values_list("message_id", flat=True))
-    new = [message_id for message_id in reversed(ids) if message_id not in done]  # oldest first
+    if rerun_newest:
+        todo = list(reversed(gmail.list_inbox_ids(rerun_newest)))  # oldest first
+    else:
+        ids = gmail.list_inbox_ids(LOOKBACK, after=connection.connected_at)
+        done = set(user.processed_emails.filter(message_id__in=ids).values_list("message_id", flat=True))
+        todo = [message_id for message_id in reversed(ids) if message_id not in done][:MAX_PER_RUN]
 
-    for message_id in new[:MAX_PER_RUN]:
+    for message_id in todo:
         record = ProcessedEmail(user=user, message_id=message_id)
         try:
             email = agent.Email(**gmail.get_email(message_id))
@@ -76,4 +82,6 @@ def _process_new_emails(user: User, connection: GoogleConnection) -> None:
             raise  # not this email's fault: stop the run and retry it next time
         except Exception as e:
             record.status, record.error = ProcessedEmail.Status.ERROR, str(e)
+        # A rerun replaces the earlier record, so the dashboard shows it as just processed.
+        user.processed_emails.filter(message_id=message_id).delete()
         record.save()

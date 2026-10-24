@@ -131,6 +131,16 @@ class RunnerTests(TestCase):
         self.assertEqual(self.user.processed_emails.get(message_id="m3").label_list, ["Work/Launch", "Team"])
         self.assertEqual(self.user.google.last_error, "")
 
+    def test_run_now_reruns_the_newest_emails_even_if_done(self, _):
+        ProcessedEmail.objects.create(user=self.user, message_id="m1", subject="old")
+        seen = []
+        result = SimpleNamespace(labels=[], urgency="not_urgent")
+        with mock.patch.object(runner.agent, "run", lambda email, labels: seen.append(email.id) or result):
+            runner.run_user(self.user, rerun_newest=3)
+        runner.gmail.list_inbox_ids.assert_called_once_with(3)  # no connected_at cutoff
+        self.assertEqual(seen, ["m1", "m2", "m3"])
+        self.assertEqual(self.user.processed_emails.get(message_id="m1").subject, "subject m1")
+
     def test_reply_skill_uses_the_users_name(self, _):
         self.user.first_name, self.user.last_name = "Ada", "Lovelace"
         skills = []

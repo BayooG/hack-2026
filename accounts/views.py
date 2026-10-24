@@ -79,7 +79,9 @@ def run_now(request):
         return redirect("dashboard")
     request.user.run_requested_at = timezone.now()
     request.user.save(update_fields=["run_requested_at"])
-    messages.success(request, "Run requested. It starts within a few seconds.")
+    messages.success(
+        request, f"Run requested. It rechecks your {runner.RUN_NOW_NEWEST} newest emails within a few seconds."
+    )
     return redirect("dashboard")
 
 
