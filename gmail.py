@@ -4,6 +4,7 @@ The first run opens a browser to authorize and saves token.json.
 """
 
 import base64
+import logging
 import os
 from email.message import EmailMessage
 from functools import cache
@@ -18,6 +19,15 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 TOKEN_FILE = "token.json"
 CREDENTIALS_FILE = "credentials.json"
 MAX_BODY_CHARS = 8000
+# Retries for rate-limit (429, 403 rateLimitExceeded) and server errors. The client
+# backs off exponentially with jitter; 8 retries wait about 4 minutes in total, enough
+# to get past Gmail's per-minute quota window.
+RETRIES = 8
+
+# Show the client's "Sleeping N seconds before retry" warnings, which it hides by default.
+_retry_handler = logging.StreamHandler()
+_retry_handler.setFormatter(logging.Formatter("[gmail] %(message)s"))
+logging.getLogger("googleapiclient.http").addHandler(_retry_handler)
 
 
 @cache
@@ -39,18 +49,20 @@ def _service():
 
 def list_labels() -> list[dict]:
     """User-created labels only (no INBOX, SPAM, CATEGORY_*, ...)."""
-    labels = _service().users().labels().list(userId="me").execute()["labels"]
+    labels = _service().users().labels().list(userId="me").execute(num_retries=RETRIES)["labels"]
     return [label for label in labels if label["type"] == "user"]
 
 
 def add_labels(message_id: str, label_ids: list[str]) -> None:
     _service().users().messages().modify(
         userId="me", id=message_id, body={"addLabelIds": label_ids}
-    ).execute()
+    ).execute(num_retries=RETRIES)
 
 
 def get_label_ids(message_id: str) -> list[str]:
-    msg = _service().users().messages().get(userId="me", id=message_id, format="minimal").execute()
+    msg = _service().users().messages().get(
+        userId="me", id=message_id, format="minimal"
+    ).execute(num_retries=RETRIES)
     return msg.get("labelIds", [])
 
 
@@ -58,32 +70,32 @@ def create_label(name: str, color: dict | None = None) -> str:
     """Create a user label and return its id. "Parent/Child" nests it under Parent.
     color is {"textColor", "backgroundColor"}, as list_labels returns it."""
     body = {"name": name} | ({"color": color} if color else {})
-    label = _service().users().labels().create(userId="me", body=body).execute()
+    label = _service().users().labels().create(userId="me", body=body).execute(num_retries=RETRIES)
     return label["id"]
 
 
 def set_label_color(label_id: str, color: dict) -> None:
-    _service().users().labels().patch(userId="me", id=label_id, body={"color": color}).execute()
+    _service().users().labels().patch(userId="me", id=label_id, body={"color": color}).execute(num_retries=RETRIES)
 
 
 def list_newest(n: int) -> list[dict]:
     """The newest n inbox messages as {id, thread_id, sender, to, cc, subject, body}."""
     messages = _service().users().messages()
-    refs = messages.list(userId="me", labelIds=["INBOX"], maxResults=n).execute()
+    refs = messages.list(userId="me", labelIds=["INBOX"], maxResults=n).execute(num_retries=RETRIES)
     return [
-        _to_email(messages.get(userId="me", id=ref["id"], format="full").execute())
+        _to_email(messages.get(userId="me", id=ref["id"], format="full").execute(num_retries=RETRIES))
         for ref in refs.get("messages", [])
     ]
 
 
 def thread_has_draft(thread_id: str) -> bool:
-    drafts = _service().users().drafts().list(userId="me", maxResults=500).execute()
+    drafts = _service().users().drafts().list(userId="me", maxResults=500).execute(num_retries=RETRIES)
     return any(d["message"]["threadId"] == thread_id for d in drafts.get("drafts", []))
 
 
 @cache
 def my_address() -> str:
-    return _service().users().getProfile(userId="me").execute()["emailAddress"]
+    return _service().users().getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"]
 
 
 def get_reply_headers(message_id: str) -> dict:
@@ -91,7 +103,7 @@ def get_reply_headers(message_id: str) -> dict:
     msg = _service().users().messages().get(
         userId="me", id=message_id, format="metadata",
         metadataHeaders=["From", "Reply-To", "To", "Cc", "Subject", "Message-ID", "References", "List-Id"],
-    ).execute()
+    ).execute(num_retries=RETRIES)
     headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
     return headers | {"thread_id": msg["threadId"]}
 
@@ -114,7 +126,7 @@ def create_reply_draft(original: dict, to: str, cc: list[str], body: str) -> str
     raw = base64.urlsafe_b64encode(reply.as_bytes()).decode()
     draft = _service().users().drafts().create(
         userId="me", body={"message": {"raw": raw, "threadId": original["thread_id"]}}
-    ).execute()
+    ).execute(num_retries=RETRIES)
     return draft["id"]
 
 
