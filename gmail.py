@@ -1,23 +1,13 @@
-"""Thin wrapper around the Gmail API.
-
-The first run opens a browser to authorize and saves token.json.
-"""
+"""Thin wrapper around the Gmail API."""
 
 import base64
 import logging
-import os
+from datetime import datetime, timezone
 from email.message import EmailMessage
-from functools import cache
 from html.parser import HTMLParser
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+import run_context
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
-TOKEN_FILE = "token.json"
-CREDENTIALS_FILE = "credentials.json"
 MAX_BODY_CHARS = 8000
 # Retries for rate-limit (429, 403 rateLimitExceeded) and server errors. The client
 # backs off exponentially with jitter; 8 retries wait about 4 minutes in total, enough
@@ -30,21 +20,21 @@ _retry_handler.setFormatter(logging.Formatter("[gmail] %(message)s"))
 logging.getLogger("googleapiclient.http").addHandler(_retry_handler)
 
 
-@cache
 def _service():
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE)
-        if not creds.has_scopes(SCOPES):
-            creds = None
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    elif not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0)
-    with open(TOKEN_FILE, "w") as f:
-        f.write(creds.to_json())
-    return build("gmail", "v1", credentials=creds)
+    return run_context.current().service("gmail", "v1")
+
+
+def my_address() -> str:
+    """The Gmail address of the account in the current run context."""
+    return run_context.current().cached(
+        "gmail:address",
+        lambda: _service().users().getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"],
+    )
+
+
+def message_url(message_id: str) -> str:
+    """Link that opens the message in Gmail, in the right account."""
+    return f"https://mail.google.com/mail/?authuser={my_address()}#all/{message_id}"
 
 
 def list_labels() -> list[dict]:
@@ -78,24 +68,65 @@ def set_label_color(label_id: str, color: dict) -> None:
     _service().users().labels().patch(userId="me", id=label_id, body={"color": color}).execute(num_retries=RETRIES)
 
 
+def get_label(label_id: str) -> dict:
+    """One label with its counts (threadsTotal, messagesTotal, ...)."""
+    return _service().users().labels().get(userId="me", id=label_id).execute(num_retries=RETRIES)
+
+
+def delete_label(label_id: str) -> None:
+    """Delete a label. Its messages stay, just without this label."""
+    _service().users().labels().delete(userId="me", id=label_id).execute(num_retries=RETRIES)
+
+
+def list_label_ids(label_id: str, limit: int = 500) -> list[str]:
+    """Ids of the messages under a label, newest first."""
+    refs = _service().users().messages().list(
+        userId="me", labelIds=[label_id], maxResults=limit
+    ).execute(num_retries=RETRIES)
+    return [ref["id"] for ref in refs.get("messages", [])]
+
+
+def get_summary(message_id: str) -> dict:
+    """One message as {id, date, sender, subject, snippet}, without its body."""
+    msg = _service().users().messages().get(
+        userId="me", id=message_id, format="metadata", metadataHeaders=["From", "Subject"]
+    ).execute(num_retries=RETRIES)
+    headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
+    return {
+        "id": msg["id"],
+        "date": datetime.fromtimestamp(int(msg["internalDate"]) / 1000, timezone.utc),
+        "sender": headers.get("from", ""),
+        "subject": headers.get("subject", ""),
+        "snippet": msg.get("snippet", ""),
+    }
+
+
+def list_inbox_ids(limit: int, after: datetime | None = None) -> list[str]:
+    """Ids of the newest inbox messages (newest first), optionally only those
+    received after a moment."""
+    query = f"after:{int(after.timestamp())}" if after else ""
+    refs = _service().users().messages().list(
+        userId="me", labelIds=["INBOX"], q=query, maxResults=limit
+    ).execute(num_retries=RETRIES)
+    return [ref["id"] for ref in refs.get("messages", [])]
+
+
+def get_email(message_id: str) -> dict:
+    """One message as {id, thread_id, sender, to, cc, subject, body}."""
+    msg = _service().users().messages().get(
+        userId="me", id=message_id, format="full"
+    ).execute(num_retries=RETRIES)
+    return _to_email(msg)
+
+
 def list_newest(n: int) -> list[dict]:
     """The newest n inbox messages as {id, thread_id, sender, to, cc, subject, body}."""
-    messages = _service().users().messages()
-    refs = messages.list(userId="me", labelIds=["INBOX"], maxResults=n).execute(num_retries=RETRIES)
-    return [
-        _to_email(messages.get(userId="me", id=ref["id"], format="full").execute(num_retries=RETRIES))
-        for ref in refs.get("messages", [])
-    ]
+    return [get_email(message_id) for message_id in list_inbox_ids(n)]
 
 
 def thread_has_draft(thread_id: str) -> bool:
     drafts = _service().users().drafts().list(userId="me", maxResults=500).execute(num_retries=RETRIES)
     return any(d["message"]["threadId"] == thread_id for d in drafts.get("drafts", []))
-
-
-@cache
-def my_address() -> str:
-    return _service().users().getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"]
 
 
 def get_reply_headers(message_id: str) -> dict:

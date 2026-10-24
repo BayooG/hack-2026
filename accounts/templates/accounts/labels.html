@@ -1,0 +1,80 @@
+{% extends "accounts/base.html" %}
+{% block title %}Labels · Inbox Agent{% endblock %}
+{% block content %}
+<div class="container page">
+
+  <div class="page-header">
+    <div>
+      <h1>Labels</h1>
+      <p class="muted">What each of your Gmail labels is for. The agent reads these to file your email.</p>
+    </div>
+    <form method="post" action="{% url 'reset_labels' %}"
+          onsubmit="return confirm('Replace all your labels with the defaults?')">
+      {% csrf_token %}<button class="btn btn-ghost btn-sm">Reset to defaults</button>
+    </form>
+  </div>
+
+  {% if problem %}
+    <p class="muted small label-note">{{ problem }}</p>
+  {% elif missing %}
+    <div class="alert alert-warning label-note">
+      <span>In Gmail but not described: {{ missing|join:", " }}</span>
+      <form method="post" action="{% url 'add_missing_labels' %}">
+        {% csrf_token %}<button class="btn btn-secondary btn-sm">Add them</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'labels' %}" class="card">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    {% for error in formset.non_form_errors %}<p class="error-text label-errors">{{ error }}</p>{% endfor %}
+
+    <div class="label-row label-head" aria-hidden="true">
+      <span>Emoji</span><span>Name</span><span>Sub-labels</span>
+      <span>Belongs here</span><span>Doesn't belong</span><span></span>
+    </div>
+
+    {% for form in formset %}
+      <div class="label-row{% if not form.instance.pk %} label-new{% endif %}">
+        {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+        {% for field in form.visible_fields %}
+          {% if field.name != "DELETE" %}
+            <div class="label-cell label-{{ field.name }}{% if field.errors %} has-error{% endif %}">
+              <span class="label-cell-name">{{ field.label }}</span>
+              {{ field }}
+              {% if field.name == "name" and form.not_in_gmail %}<span class="badge badge-schedule_time">Not in Gmail</span>{% endif %}
+              {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
+        <div class="label-cell label-remove">
+          {% if form.instance.pk %}
+            <label class="remove-toggle" title="Remove this label">{{ form.DELETE }} Remove</label>
+          {% else %}
+            <span class="muted small">New</span>
+          {% endif %}
+        </div>
+        {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </div>
+    {% endfor %}
+
+    <div class="label-footer">
+      <p class="muted small">Fill in the empty last row to add a label. Sub-labels "never" turns them off; blank means when useful. The labels themselves come from Gmail; names match by letters only.</p>
+      <button type="submit" class="btn btn-primary">Save labels</button>
+    </div>
+  </form>
+
+</div>
+<script>
+  // Grow the description boxes to fit their text, again once fonts and layout settle.
+  var boxes = document.querySelectorAll(".label-row textarea");
+  function fit(box) { box.style.height = "auto"; box.style.height = box.scrollHeight + 2 + "px"; }
+  function fitAll() { boxes.forEach(fit); }
+  boxes.forEach(function (box) { box.addEventListener("input", function () { fit(box); }); });
+  fitAll();
+  window.addEventListener("load", fitAll);
+  window.addEventListener("resize", fitAll);
+  if (document.fonts) document.fonts.ready.then(fitAll);
+</script>
+{% endblock %}
