@@ -13,7 +13,8 @@ as drafts, never sent.
    when someone clicks "Run now". The CLI processes the newest N emails of the
    `token.json` account.
 2. **Classify** (Claude). Picks 0 to 3 labels from your Gmail labels, using the
-   descriptions in [labels.md](labels.md). Also returns the urgency, the minutes
+   label descriptions each user edits on the web app's Labels tab (new users start
+   from [labels.md](labels.md), which the CLI uses). Also returns the urgency, the minutes
    needed to reply, whether a reply is needed, and a one-sentence summary.
 3. **Required actions** (code). Applies the labels, then runs the action for the
    urgency: `for_summary` adds the email to the digest, `schedule_time` blocks

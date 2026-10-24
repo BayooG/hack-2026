@@ -2,7 +2,7 @@ RUN := uv run --env-file .env
 N ?= 5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup install migrate superuser dev web scheduler test agent slots
+.PHONY: help setup install migrate superuser dev web scheduler test agent cleanup slots
 
 help: ## Show this help
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -56,6 +56,9 @@ test: .env ## Run the tests
 
 agent: .env ## CLI: process the newest N emails of the token.json account (make agent N=3)
 	$(RUN) python agent.py $(N)
+
+cleanup: .env ## CLI: sub-label cleanup for the token.json account, dry run (make cleanup APPLY=1 deletes)
+	$(RUN) python sublabel_cleanup.py $(if $(APPLY),--apply)
 
 slots: .env ## CLI: show free calendar slots of the token.json account
 	$(RUN) python gcal.py

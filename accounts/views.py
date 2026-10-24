@@ -9,9 +9,13 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from oauthlib.oauth2 import OAuth2Error
 
-from . import google_connect
-from .forms import SettingsForm, SignupForm
-from .models import GoogleConnection
+import gmail
+import labels
+import run_context
+
+from . import cleanup_runner, google_connect, runner
+from .forms import LabelFormSet, SettingsForm, SignupForm
+from .models import GoogleConnection, Label, seed_labels, user_labels
 
 
 def health(request):
@@ -32,7 +36,9 @@ def signup(request):
         return redirect("dashboard")
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        login(request, form.save())
+        user = form.save()
+        seed_labels(user)
+        login(request, user)
         return redirect("dashboard")
     return render(request, "accounts/signup.html", {"form": form})
 
@@ -43,10 +49,12 @@ def dashboard(request):
 
 
 def _render_dashboard(request, form):
+    connection = GoogleConnection.objects.filter(user=request.user).first()
     return render(request, "accounts/dashboard.html", {
-        "connection": GoogleConnection.objects.filter(user=request.user).first(),
+        "connection": connection,
         "form": form,
         "activity": request.user.processed_emails.all()[:20],
+        "cleanup": cleanup_runner.last_result(request.user) if connection else None,
     })
 
 
@@ -71,8 +79,100 @@ def run_now(request):
         return redirect("dashboard")
     request.user.run_requested_at = timezone.now()
     request.user.save(update_fields=["run_requested_at"])
-    messages.success(request, "Run requested. It starts within a few seconds.")
+    messages.success(
+        request, f"Run requested. It rechecks your {runner.RUN_NOW_NEWEST} newest emails within a few seconds."
+    )
     return redirect("dashboard")
+
+
+@login_required
+@require_POST
+def cleanup_now(request):
+    if not GoogleConnection.objects.filter(
+        user=request.user, status=GoogleConnection.Status.CONNECTED
+    ).exists():
+        messages.error(request, "Connect Google first.")
+        return redirect("dashboard")
+    request.user.cleanup_requested_at = timezone.now()
+    request.user.save(update_fields=["cleanup_requested_at"])
+    messages.success(request, "Cleanup requested. It starts within a few seconds.")
+    return redirect("dashboard")
+
+
+@login_required
+def labels_page(request):
+    user_labels(request.user)
+    formset = LabelFormSet(request.POST or None, queryset=request.user.labels.all(), prefix="labels")
+    if request.method == "POST" and formset.is_valid():
+        _save_labels(request.user, formset)
+        messages.success(request, "Labels saved. The next run uses them.")
+        return redirect("labels")
+
+    gmail_names, problem = _gmail_label_names(request.user)
+    missing = []
+    if gmail_names is not None:
+        in_gmail = {labels.key(name): name for name in gmail_names if "/" not in name}
+        described = {labels.key(label.name) for label in request.user.labels.all()}
+        missing = [name for k, name in in_gmail.items() if k not in described]
+        for form in formset:
+            form.not_in_gmail = bool(form.instance.pk) and labels.key(form.initial.get("name", "")) not in in_gmail
+    return render(request, "accounts/labels.html", {"formset": formset, "missing": missing, "problem": problem})
+
+
+def _save_labels(user, formset) -> None:
+    rows = formset.save(commit=False)
+    for label in formset.deleted_objects:
+        label.delete()
+    position = max(user.labels.values_list("position", flat=True), default=-1) + 1
+    for label in rows:
+        if label.pk is None:
+            label.user, label.position = user, position
+            position += 1
+        label.save()
+
+
+@login_required
+@require_POST
+def add_missing_labels(request):
+    """Adds an empty row for each Gmail top-level label the user hasn't described."""
+    gmail_names, problem = _gmail_label_names(request.user)
+    if gmail_names is None:
+        messages.error(request, problem)
+        return redirect("labels")
+    labels_now = user_labels(request.user)
+    described = {labels.key(label.name) for label in labels_now}
+    position = max((label.position for label in labels_now), default=-1) + 1
+    added = []
+    for name in gmail_names:
+        if "/" in name or labels.key(name) in described:
+            continue
+        emoji, plain = labels.split_emoji(name)
+        added.append(Label(user=request.user, position=position + len(added), emoji=emoji, name=plain))
+        described.add(labels.key(name))
+    Label.objects.bulk_create(added)
+    messages.success(request, f"Added {len(added)} label{'s' if len(added) != 1 else ''}. Describe them below.")
+    return redirect("labels")
+
+
+@login_required
+@require_POST
+def reset_labels(request):
+    request.user.labels.all().delete()
+    seed_labels(request.user)
+    messages.success(request, "Labels reset to the defaults.")
+    return redirect("labels")
+
+
+def _gmail_label_names(user) -> tuple[list[str] | None, str]:
+    """The user's Gmail label names, or None and why Gmail couldn't be read."""
+    connection = GoogleConnection.objects.filter(user=user).first()
+    if not connection or connection.status != GoogleConnection.Status.CONNECTED:
+        return None, "Connect Google to check your labels against Gmail."
+    try:
+        with run_context.use(runner.context(user)):
+            return [label["name"] for label in gmail.list_labels()], ""
+    except Exception as e:
+        return None, f"Couldn't read your Gmail labels: {e}"
 
 
 def _callback_url(request) -> str:

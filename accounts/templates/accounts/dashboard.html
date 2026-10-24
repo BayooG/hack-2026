@@ -93,6 +93,28 @@
         </div>
       </section>
 
+      {% if connection %}
+        <section class="card">
+          <div class="card-header"><h2 class="card-title">Sub-label cleanup</h2></div>
+          <div class="card-body">
+            <dl class="kv">
+              <dt>Last cleanup</dt>
+              <dd>
+                {% if not cleanup %}Not yet
+                {% elif cleanup.would_remove %}{{ connection.last_cleanup_at|date:"M j" }}: would remove {{ cleanup.would_remove }} (dry run)
+                {% else %}{{ connection.last_cleanup_at|date:"M j" }}: {{ cleanup.removed }} sub-label{{ cleanup.removed|pluralize }} removed
+                {% endif %}
+              </dd>
+            </dl>
+            {% if connection.last_cleanup_error %}<p class="error-text">{{ connection.last_cleanup_error }}</p>{% endif %}
+            <form method="post" action="{% url 'cleanup_now' %}">
+              {% csrf_token %}
+              <button class="btn btn-secondary btn-block" {% if connection.status != "connected" %}disabled{% endif %}>Clean up sub-labels</button>
+            </form>
+          </div>
+        </section>
+      {% endif %}
+
       <section class="card">
         <div class="card-header"><h2 class="card-title">Settings</h2></div>
         <div class="card-body">
@@ -102,6 +124,10 @@
             <label class="switch">
               {{ form.agent_enabled }}
               <div><strong>Run automatically</strong><span>Checks for new email every 5 minutes.</span></div>
+            </label>
+            <label class="switch">
+              {{ form.cleanup_enabled }}
+              <div><strong>Delete finished sub-labels</strong><span>Once a month, or when you click Clean up. Off: only counts what it would delete.</span></div>
             </label>
             <div class="field-row">
               <div class="field"><label for="{{ form.work_start.id_for_label }}">Work starts</label>{{ form.work_start }}</div>

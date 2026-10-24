@@ -22,6 +22,8 @@ class RunContext:
     # The CLI has no signup, so it keeps these placeholders; web runs use the names from signup.
     first_name: str = "Jane"
     last_name: str = "Doe"
+    # The user's labels, as labels.parse gives them; None (the CLI) reads labels.md from the repo.
+    labels: dict[str, dict] | None = None
     _memo: dict[str, Any] = field(default_factory=dict)
 
     def cached(self, key: str, compute: Callable[[], Any]) -> Any:

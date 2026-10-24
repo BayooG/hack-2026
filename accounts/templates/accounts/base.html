@@ -36,7 +36,10 @@
           {% include "accounts/_icon.html" with name="sun" class="icon-sm icon-sun" %}
         </button>
         {% if user.is_authenticated %}
-          <a class="btn btn-ghost" href="{% url 'dashboard' %}">Dashboard</a>
+          {% with page=request.resolver_match.url_name %}
+            <a class="btn btn-ghost{% if page == 'dashboard' %} active{% endif %}" href="{% url 'dashboard' %}">Dashboard</a>
+            <a class="btn btn-ghost{% if page == 'labels' %} active{% endif %}" href="{% url 'labels' %}">Labels</a>
+          {% endwith %}
           <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}<button class="btn btn-secondary">Log out</button>
           </form>
