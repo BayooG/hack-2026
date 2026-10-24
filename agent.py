@@ -17,6 +17,7 @@ from pydantic import BaseModel, create_model
 import actions
 import gmail
 import labels
+import run_context
 
 MODEL = "claude-sonnet-5-5"
 DEFAULT_COUNT = 5
@@ -182,10 +183,13 @@ MAX_STEPS = 5
 
 
 def load_skill(name: str) -> str:
-    """The instructions of skills/<name>/SKILL.md, without its frontmatter."""
+    """The instructions of skills/<name>/SKILL.md, without its frontmatter,
+    with {user_name} and {first_name} filled in for the current user."""
     text = (SKILLS_DIR / name / "SKILL.md").read_text()
     if text.startswith("---"):
         text = text.split("---", 2)[2]
+    user_name = run_context.current().user_name
+    text = text.replace("{user_name}", user_name).replace("{first_name}", user_name.split()[0])
     return text.strip()
 
 

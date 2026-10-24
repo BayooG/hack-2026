@@ -17,6 +17,7 @@ from googleapiclient.discovery import build
 @dataclass
 class RunContext:
     creds: Credentials
+    user_name: str = "Jane Doe"  # placeholder until signup asks for the user's name
     work_start: time = time(9, 0)
     work_end: time = time(18, 0)
     _memo: dict[str, Any] = field(default_factory=dict)
