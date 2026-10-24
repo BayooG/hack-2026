@@ -4,6 +4,7 @@ The first run opens a browser to authorize and saves token.json.
 """
 
 import base64
+import logging
 import os
 from email.message import EmailMessage
 from functools import cache
@@ -19,8 +20,14 @@ TOKEN_FILE = "token.json"
 CREDENTIALS_FILE = "credentials.json"
 MAX_BODY_CHARS = 8000
 # Retries for rate-limit (429, 403 rateLimitExceeded) and server errors. The client
-# backs off exponentially with jitter, up to about a minute in total.
-RETRIES = 6
+# backs off exponentially with jitter; 8 retries wait about 4 minutes in total, enough
+# to get past Gmail's per-minute quota window.
+RETRIES = 8
+
+# Show the client's "Sleeping N seconds before retry" warnings, which it hides by default.
+_retry_handler = logging.StreamHandler()
+_retry_handler.setFormatter(logging.Formatter("[gmail] %(message)s"))
+logging.getLogger("googleapiclient.http").addHandler(_retry_handler)
 
 
 @cache
